@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, List, Volume2, Search, Pin, PinOff, X, Heart } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, List, Volume2, Search, Pin, PinOff, X, Heart, EyeOff, Eraser } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
 import { eagleService } from '../services/eagle';
@@ -17,7 +17,8 @@ const Controls = () => {
         isPlaying, togglePlay, next, previous,
         volume, setVolume, playlist, currentIndex,
         currentTime, duration, requestSeek,
-        updateItemTags, likeTags, setLikeTags
+        updateItemTags, likeTags, setLikeTags,
+        skipViewed, toggleSkipViewed, clearViewedHistory, viewedItems
     } = usePlayerStore();
 
     const [isPinned, setIsPinned] = useState(false);
@@ -25,6 +26,24 @@ const Controls = () => {
     const [showTagSelector, setShowTagSelector] = useState(false);
     const [selectorPos, setSelectorPos] = useState(null);
     const [popupReason, setPopupReason] = useState(null);
+    const [confirmClearHistory, setConfirmClearHistory] = useState(false); // Confirmation state
+
+    useEffect(() => {
+        if (confirmClearHistory) {
+            const timer = setTimeout(() => setConfirmClearHistory(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [confirmClearHistory]);
+
+    const handleClearHistory = () => {
+        if (confirmClearHistory) {
+            clearViewedHistory();
+            setConfirmClearHistory(false);
+        } else {
+            setConfirmClearHistory(true);
+        }
+    };
+
     const heartRef = useRef(null);
     const { addToast } = useToastStore();
 
@@ -205,6 +224,27 @@ const Controls = () => {
                         </button>
 
                         <button onClick={next} title="Next"><SkipForward size={24} /></button>
+
+                        <button
+                            onClick={toggleSkipViewed}
+                            title={skipViewed ? "Skip Viewed: ON" : "Skip Viewed: OFF"}
+                            style={{ color: skipViewed ? 'var(--accent, #4a9eff)' : 'white' }}
+                        >
+                            <EyeOff size={20} />
+                        </button>
+
+                        {viewedItems.length > 0 && (
+                            <button
+                                onClick={handleClearHistory}
+                                title={confirmClearHistory ? "Confirm Clear History" : "Clear Visited History"}
+                                style={{
+                                    color: confirmClearHistory ? '#ff4444' : 'rgba(255,255,255,0.5)',
+                                    transition: 'color 0.2s'
+                                }}
+                            >
+                                <Eraser size={20} />
+                            </button>
+                        )}
 
                         <button
                             ref={heartRef}

@@ -14,6 +14,10 @@ const initialState = {
     isPlaylistPanelOpen: false,
     libraryPath: '',
 
+    // Viewed History
+    viewedItems: [], // Array of IDs
+    skipViewed: false,
+
     // Video Progress
     currentTime: 0,
     duration: 0,
@@ -91,11 +95,51 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     next: () => {
-        const { playlist, currentIndex } = get();
-        if (currentIndex < playlist.length - 1) {
-            get().playItem(currentIndex + 1);
+        const { playlist, currentIndex, skipViewed, viewedItems, playItem, clearPlaylist } = get();
+
+        // Helper to check if an item is viewed
+        const isViewed = (item) => viewedItems.includes(item.id);
+
+        let nextIndex = -1;
+
+        if (skipViewed) {
+            // Find next unviewed item
+            // 1. Search ahead
+            for (let i = currentIndex + 1; i < playlist.length; i++) {
+                if (!isViewed(playlist[i])) {
+                    nextIndex = i;
+                    break;
+                }
+            }
+            // 2. Wrap around if looping is desired (assumed yes since original had loop)
+            // But user requirement says "if playlist does not have non visited media... unload".
+            // So we should check if ANY unvisited media exists first?
+            // "when media player play next media, it should skip the visited medial"
+            if (nextIndex === -1) {
+                // Search from 0 to currentIndex
+                for (let i = 0; i <= currentIndex; i++) {
+                    if (!isViewed(playlist[i])) {
+                        nextIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (nextIndex !== -1) {
+                playItem(nextIndex);
+            } else {
+                // No unviewed items found
+                console.log("All items viewed, unloading playlist.");
+                clearPlaylist();
+            }
+
         } else {
-            get().playItem(0); // Loop
+            // Normal behavior
+            if (currentIndex < playlist.length - 1) {
+                playItem(currentIndex + 1);
+            } else {
+                playItem(0); // Loop
+            }
         }
     },
 
@@ -159,6 +203,16 @@ export const usePlayerStore = create((set, get) => ({
     likeTags: [],
     setLikeTags: (tags) => set({ likeTags: tags }),
 
+    // Viewed Actions
+    markAsViewed: (id) => set(state => {
+        if (!state.viewedItems.includes(id)) {
+            return { viewedItems: [...state.viewedItems, id] };
+        }
+        return {};
+    }),
+    toggleSkipViewed: () => set(state => ({ skipViewed: !state.skipViewed })),
+    clearViewedHistory: () => set({ viewedItems: [] }),
+
 
     // Hydration
     hydrate: () => {
@@ -183,11 +237,12 @@ export const usePlayerStore = create((set, get) => ({
         // Start persisting *after* hydration attempt
         console.log('Persistence subscription started.');
         usePlayerStore.subscribe((state) => {
-            const { playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags } = state;
+            const { playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags, viewedItems, skipViewed } = state;
 
             try {
                 localStorage.setItem('player-state', JSON.stringify({
-                    playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags
+                    playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags,
+                    viewedItems, skipViewed
                 }));
             } catch (e) {
                 console.error('Persistence failed:', e);

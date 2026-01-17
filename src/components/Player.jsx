@@ -16,10 +16,18 @@ const Player = () => {
     const updateProgress = usePlayerStore(state => state.updateProgress);
     const consumeSeek = usePlayerStore(state => state.consumeSeek);
     const togglePlay = usePlayerStore(state => state.togglePlay);
+    const markAsViewed = usePlayerStore(state => state.markAsViewed); // New Action
 
     const videoRef = useRef(null);
     const [_progress, _setProgress] = useState(0); // For image timer (local state) - Unused now
     const currentItem = playlist[currentIndex];
+
+    // Mark as viewed
+    useEffect(() => {
+        if (currentItem?.id) {
+            markAsViewed(currentItem.id);
+        }
+    }, [currentItem?.id, markAsViewed]);
 
     // Dedicated refs for image logic
     const imageTimeRef = useRef(0);
@@ -27,7 +35,7 @@ const Player = () => {
     const IMAGE_DURATION = 10;
 
     // Media Attributes
-    const isVideo = currentItem?.ext === 'mp4' || currentItem?.ext === 'webm' || currentItem?.ext === 'mov';
+    const isVideo = currentItem?.ext && ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(currentItem.ext.toLowerCase());
     const src = eagleService.getItemSrc(currentItem);
 
     // Volume Sync
@@ -35,7 +43,7 @@ const Player = () => {
         if (videoRef.current) {
             videoRef.current.volume = volume;
         }
-    }, [volume]);
+    }, [volume, isVideo]);
 
     // Seek Sync
     useEffect(() => {

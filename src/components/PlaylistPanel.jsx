@@ -2,13 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { eagleService } from '../services/eagle';
 import PlaylistSetup from './PlaylistSetup';
-import { Trash2, Shuffle } from 'lucide-react';
+import { Trash2, Shuffle, Check } from 'lucide-react';
 
 const ITEM_HEIGHT = 68;
 const RENDER_BUFFER = 10;
 
 const PlaylistPanel = () => {
-    const { playlist, currentIndex, playItem, setPlaylist, isPlaylistPanelOpen, setPlaylistPanelOpen, clearPlaylist, shufflePlaylist, libraryPath } = usePlayerStore();
+    const { playlist, currentIndex, playItem, setPlaylist, isPlaylistPanelOpen, setPlaylistPanelOpen, clearPlaylist, shufflePlaylist, libraryPath, viewedItems } = usePlayerStore();
     const containerRef = useRef(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [isHovered, setIsHovered] = useState(false);
@@ -33,6 +33,8 @@ const PlaylistPanel = () => {
     const handleClear = () => {
         clearPlaylist();
     };
+
+
 
     const totalHeight = playlist.length * ITEM_HEIGHT;
     const clientHeight = containerRef.current ? containerRef.current.clientHeight : 800;
@@ -68,6 +70,11 @@ const PlaylistPanel = () => {
                     src={eagleService.getItemThumbnail(item)}
                     alt=""
                 />
+                {viewedItems.includes(item.id) && (
+                    <div className="viewed-overlay">
+                        <Check size={20} color="#4a9eff" strokeWidth={3} />
+                    </div>
+                )}
             </div>
             <div className="meta">
                 <div className="name" title={item?.name}>
@@ -138,6 +145,7 @@ const PlaylistPanel = () => {
                         </button>
                     </div>
                 </div>
+
 
                 {isPlaylistPanelOpen ? (
                     <PlaylistSetup onSetupComplete={handleSetupComplete} />
@@ -230,6 +238,7 @@ const PlaylistPanel = () => {
                     border-radius: 4px;
                     overflow: hidden;
                     flex-shrink: 0;
+                    position: relative; /* For viewed overlay */
                 }
                 .thumb img {
                     width: 100%;
@@ -237,6 +246,12 @@ const PlaylistPanel = () => {
                     object-fit: cover;
                     opacity: 0;
                     animation: fadeIn 0.3s forwards;
+                }
+                .viewed-overlay {
+                    position: absolute;
+                    top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    display: flex; align-items: center; justify-content: center;
                 }
                 @keyframes fadeIn { to { opacity: 1; } }
 
