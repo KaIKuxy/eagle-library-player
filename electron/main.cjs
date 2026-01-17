@@ -99,8 +99,11 @@ function createWindow() {
         }
     });
 
-    // Debug: Open DevTools
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // Open DevTools only if not packaged OR if it's a Debug Build
+    const isDebugBuild = require('../package.json').debugBuild === true;
+    if (!app.isPackaged || isDebugBuild) {
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
 
     // Save state on events
     mainWindow.on('resize', () => scheduleSave(mainWindow));
