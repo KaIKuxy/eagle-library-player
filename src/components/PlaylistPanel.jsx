@@ -80,7 +80,7 @@ const PlaylistPanel = () => {
                     src={eagleService.getItemThumbnail(item)}
                     alt=""
                 />
-                {viewedItems.includes(item.id) && (
+                {Array.isArray(viewedItems) && viewedItems.includes(item.id) && (
                     <div className="viewed-overlay">
                         <Check size={20} color="#4a9eff" strokeWidth={3} />
                     </div>

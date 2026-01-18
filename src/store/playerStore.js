@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { get, set as setKeyVal } from 'idb-keyval';
 
 // Initial State
 const initialState = {
@@ -24,23 +25,15 @@ const initialState = {
     seekToTime: null,
 
     // UI State
-
     folderIdNameMap: {} // Map<ID, Name>
 };
 
-export const usePlayerStore = create((set, get) => ({
+export const usePlayerStore = create((set, getStore) => ({
     ...initialState,
 
     // Actions
     setPlaylist: (items) => {
-        // If items empty, reset
         if (!items || items.length === 0) return;
-
-        // Check if identical to avoid index reset?
-        // Simple length check or first item check
-        // const { playlist } = get();
-        // if (playlist.length === items.length && playlist[0]?.id === items[0]?.id) return;
-
         set({ playlist: items, currentIndex: 0, history: [], isPlaying: true });
     },
 
@@ -58,7 +51,7 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     shufflePlaylist: () => {
-        const { playlist, currentIndex } = get();
+        const { playlist, currentIndex } = getStore();
         if (playlist.length <= 1) return;
 
         const currentItem = currentIndex >= 0 ? playlist[currentIndex] : null;
@@ -68,13 +61,12 @@ export const usePlayerStore = create((set, get) => ({
             itemsToShuffle.splice(currentIndex, 1);
         }
 
-        // Fisher-Yates shuffle on the rest
+        // Fisher-Yates shuffle
         for (let i = itemsToShuffle.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [itemsToShuffle[i], itemsToShuffle[j]] = [itemsToShuffle[j], itemsToShuffle[i]];
         }
 
-        // Reconstruct playlist with current item at top
         let finalPlaylist = itemsToShuffle;
         let newIndex = currentIndex;
 
@@ -87,7 +79,7 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     playItem: (index) => {
-        const { playlist, history, currentIndex } = get();
+        const { playlist, history, currentIndex } = getStore();
         if (index >= 0 && index < playlist.length) {
             const newHistory = [...history, currentIndex].slice(-100);
             set({ currentIndex: index, isPlaying: true, history: newHistory });
@@ -95,28 +87,21 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     next: () => {
-        const { playlist, currentIndex, skipViewed, viewedItems, playItem, clearPlaylist } = get();
-
-        // Helper to check if an item is viewed
-        const isViewed = (item) => viewedItems.includes(item.id);
+        const { playlist, currentIndex, skipViewed, viewedItems, playItem, clearPlaylist } = getStore();
+        const isViewed = (item) => (viewedItems || []).includes(item.id);
 
         let nextIndex = -1;
 
         if (skipViewed) {
             // Find next unviewed item
-            // 1. Search ahead
             for (let i = currentIndex + 1; i < playlist.length; i++) {
                 if (!isViewed(playlist[i])) {
                     nextIndex = i;
                     break;
                 }
             }
-            // 2. Wrap around if looping is desired (assumed yes since original had loop)
-            // But user requirement says "if playlist does not have non visited media... unload".
-            // So we should check if ANY unvisited media exists first?
-            // "when media player play next media, it should skip the visited medial"
             if (nextIndex === -1) {
-                // Search from 0 to currentIndex
+                // Wrap around search
                 for (let i = 0; i <= currentIndex; i++) {
                     if (!isViewed(playlist[i])) {
                         nextIndex = i;
@@ -128,13 +113,11 @@ export const usePlayerStore = create((set, get) => ({
             if (nextIndex !== -1) {
                 playItem(nextIndex);
             } else {
-                // No unviewed items found
                 console.log("All items viewed, unloading playlist.");
                 clearPlaylist();
             }
 
         } else {
-            // Normal behavior
             if (currentIndex < playlist.length - 1) {
                 playItem(currentIndex + 1);
             } else {
@@ -144,14 +127,14 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     previous: () => {
-        const { playlist, currentIndex } = get();
+        const { playlist, currentIndex } = getStore();
         if (currentIndex > 0) {
-            get().playItem(currentIndex - 1);
+            getStore().playItem(currentIndex - 1);
         }
     },
 
     previousHistory: () => {
-        const { history } = get();
+        const { history } = getStore();
         if (history.length > 0) {
             const lastIndex = history[history.length - 1];
             const newHistory = history.slice(0, -1);
@@ -166,10 +149,8 @@ export const usePlayerStore = create((set, get) => ({
     setPlaylistPanelOpen: (isOpen) => set({ isPlaylistPanelOpen: isOpen }),
     togglePlaylistPanel: () => set(state => ({ isPlaylistPanelOpen: !state.isPlaylistPanelOpen })),
 
-    // Video Progress Actions
     updateProgress: (currentTime, duration) => set({ currentTime, duration }),
     requestSeek: (time) => set({ seekToTime: time }),
-    consumeSeek: () => set({ seekToTime: null }),
     consumeSeek: () => set({ seekToTime: null }),
     setLibraryPath: (path) => set({ libraryPath: path }),
 
@@ -190,7 +171,7 @@ export const usePlayerStore = create((set, get) => ({
     },
 
     updateItemTags: (itemId, newTags) => {
-        const { playlist } = get();
+        const { playlist } = getStore();
         const index = playlist.findIndex(item => item.id === itemId);
         if (index !== -1) {
             const newPlaylist = [...playlist];
@@ -199,72 +180,52 @@ export const usePlayerStore = create((set, get) => ({
         }
     },
 
-    // Default Like Tags
     likeTags: [],
     setLikeTags: (tags) => set({ likeTags: tags }),
 
-    // Viewed Actions
     markAsViewed: (id) => set(state => {
-        if (!state.viewedItems.includes(id)) {
-            return { viewedItems: [...state.viewedItems, id] };
+        const items = Array.isArray(state.viewedItems) ? state.viewedItems : [];
+        if (!items.includes(id)) {
+            return { viewedItems: [...items, id] };
         }
         return {};
     }),
     toggleSkipViewed: () => set(state => ({ skipViewed: !state.skipViewed })),
     clearViewedHistory: () => set({ viewedItems: [] }),
 
+    hydrate: async () => {
+        if (usePlayerStore.getState()._hasHydrated) return;
+        usePlayerStore.setState({ _hasHydrated: true });
 
-    // Hydration
-    // Hydration
-    hydrate: () => {
-        console.log('Hydrating player store (localStorage)...');
-        try {
-            // Attempt to load split state
-            const savedPlaylistString = localStorage.getItem('player-playlist');
-            const savedConfigString = localStorage.getItem('player-config');
-            const legacyStateString = localStorage.getItem('player-state');
+        console.log('Hydrating player store...');
 
-            let hydratedState = {};
-
-            if (savedPlaylistString || savedConfigString) {
-                if (savedPlaylistString) hydratedState.playlist = JSON.parse(savedPlaylistString);
-                if (savedConfigString) {
-                    const config = JSON.parse(savedConfigString);
-                    hydratedState = { ...hydratedState, ...config };
-                }
-            } else if (legacyStateString) {
-                // Fallback to legacy
-                console.log('Migrating legacy state...');
-                hydratedState = JSON.parse(legacyStateString);
-            }
-
-            if (Object.keys(hydratedState).length > 0) {
-                // Restore state AND force play, but reset ephemeral
-                set({ ...hydratedState, isPlaying: true, currentTime: 0, duration: 0, seekToTime: null });
-            } else {
-                console.log('Hydration: No saved state found.');
-            }
-
-        } catch (err) {
-            console.error('Hydration failed:', err);
-        }
-
-        // Start persisting *after* hydration attempt
-        console.log('Persistence subscription started.');
+        // SETUP SUBSCRIPTION IMMEDIATELY
+        // This ensures we never miss an update, even if initial hydration takes time.
+        console.log('Persistence subscription started (Sync).');
 
         usePlayerStore.subscribe((state, prevState) => {
-            // 1. Handle Playlist Persistence (Huge object)
-            // Only write if reference changes
+            // 1. Handle Playlist Persistence (IndexedDB - Async)
             if (state.playlist !== prevState.playlist) {
-                try {
-                    localStorage.setItem('player-playlist', JSON.stringify(state.playlist));
-                } catch (e) {
-                    console.error('Playlist persistence failed:', e);
+                if (state.playlist && state.playlist.length > 0) {
+                    console.log('Persisting Playlist to IDB...', state.playlist.length);
+                    setKeyVal('player-playlist', state.playlist)
+                        .then(() => console.log('Playlist Saved to IDB'))
+                        .catch(e => console.error('Playlist Save Failed:', e));
+                } else if (prevState.playlist && prevState.playlist.length > 0 && state.playlist.length === 0) {
+                    // Explicit clear
+                    console.log('Clearing Playlist from IDB');
+                    setKeyVal('player-playlist', []).catch(e => console.error(e));
                 }
             }
 
-            // 2. Handle Config Persistence (Small objects)
-            const CONFIG_KEYS = ['history', 'currentIndex', 'volume', 'isMuted', 'isShuffle', 'isRepeat', 'likeTags', 'viewedItems', 'skipViewed', 'libraryPath'];
+            // 2. Handle Viewed Items Persistence (IndexedDB - Async)
+            if (state.viewedItems !== prevState.viewedItems) {
+                const items = state.viewedItems || [];
+                setKeyVal('player-viewed-items', items).catch(e => console.error(e));
+            }
+
+            // 3. Handle Config Persistence (LocalStorage - Sync)
+            const CONFIG_KEYS = ['history', 'currentIndex', 'volume', 'isMuted', 'isShuffle', 'isRepeat', 'likeTags', 'skipViewed', 'libraryPath'];
             const shouldPersistConfig = CONFIG_KEYS.some(key => state[key] !== prevState[key]);
 
             if (shouldPersistConfig) {
@@ -276,5 +237,118 @@ export const usePlayerStore = create((set, get) => ({
                 }
             }
         });
+
+        // 1. Synchronous: Load tiny config from LocalStorage
+        try {
+            const savedConfigString = localStorage.getItem('player-config');
+            const savedLegacyString = localStorage.getItem('player-state'); // Fallback check
+
+            let startState = {};
+
+            if (savedConfigString) {
+                startState = JSON.parse(savedConfigString);
+                // SAFEGUARD: Remove heavy/corrupt data that shouldn't be in config
+                if (startState.playlist) delete startState.playlist;
+                if (startState.viewedItems) delete startState.viewedItems;
+
+            } else if (savedLegacyString) {
+                // Partial legacy load for config
+                const leg = JSON.parse(savedLegacyString);
+                const { playlist, viewedItems, ...rest } = leg;
+                startState = rest;
+            }
+
+            if (Object.keys(startState).length > 0) {
+                set({ ...startState, isPlaying: true, currentTime: 0, duration: 0, seekToTime: null });
+            }
+        } catch (e) {
+            console.error("Config hydration failed", e);
+        }
+
+        // 2. Asynchronous: Load heavy data (Playlist, ViewedItems) from IndexedDB
+        try {
+            console.log("Loading heavy data from IDB...");
+            const [idbPlaylist, idbViewed] = await Promise.all([
+                get('player-playlist'),
+                get('player-viewed-items')
+            ]);
+
+            console.log("IDB Loaded. Playlist:", idbPlaylist?.length);
+
+            let finalPlaylist = idbPlaylist;
+            let finalViewed = idbViewed;
+
+            // Migration from LocalStorage if IDB is empty
+            if (!finalPlaylist) {
+                // Check 'player-playlist' LS
+                let lsP = localStorage.getItem('player-playlist');
+                if (lsP) {
+                    try {
+                        const parsed = JSON.parse(lsP);
+                        if (Array.isArray(parsed)) {
+                            finalPlaylist = parsed;
+                            console.log("Migrating LS Playlist to IDB...", finalPlaylist?.length);
+                            await setKeyVal('player-playlist', finalPlaylist);
+                            localStorage.removeItem('player-playlist');
+                        }
+                    } catch (e) { console.error("Migration Parse Error", e); }
+                } else {
+                    // Check 'player-state' legacy
+                    const legacy = localStorage.getItem('player-state');
+                    if (legacy) {
+                        try {
+                            const parsed = JSON.parse(legacy);
+                            if (parsed.playlist) {
+                                finalPlaylist = parsed.playlist;
+                                console.log("Migrating Legacy Playlist to IDB...", finalPlaylist?.length);
+                                await setKeyVal('player-playlist', finalPlaylist);
+                            }
+                        } catch (e) { }
+                    }
+                }
+            }
+
+            if (!finalViewed) {
+                let lsV = localStorage.getItem('player-viewed-items');
+                if (lsV) {
+                    try {
+                        finalViewed = JSON.parse(lsV);
+                        console.log("Migrating LS ViewedItems to IDB...");
+                        await setKeyVal('player-viewed-items', finalViewed);
+                        localStorage.removeItem('player-viewed-items');
+                    } catch (e) { }
+                } else {
+                    const legacy = localStorage.getItem('player-state');
+                    if (legacy) {
+                        try {
+                            const parsed = JSON.parse(legacy);
+                            if (parsed.viewedItems) {
+                                finalViewed = parsed.viewedItems;
+                                await setKeyVal('player-viewed-items', finalViewed);
+                            }
+                        } catch (e) { }
+                    }
+                }
+            }
+
+            // Cleanup legacy file only if we fully migrated
+            if (finalPlaylist && finalViewed && localStorage.getItem('player-state')) {
+                localStorage.removeItem('player-state');
+            }
+
+            // Apply Heavy Data
+            if (finalPlaylist || finalViewed) {
+                console.log("Applying final heavy data to store...", finalPlaylist?.length);
+                set(state => ({
+                    playlist: finalPlaylist || state.playlist || [],
+                    viewedItems: finalViewed || state.viewedItems || []
+                }));
+            }
+
+            console.log("Heavy Hydration Complete.");
+
+        } catch (e) {
+            console.error("Heavy hydration failed", e);
+        }
     }
 }));
