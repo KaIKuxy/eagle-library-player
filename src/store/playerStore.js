@@ -215,21 +215,36 @@ export const usePlayerStore = create((set, get) => ({
 
 
     // Hydration
+    // Hydration
     hydrate: () => {
         console.log('Hydrating player store (localStorage)...');
         try {
-            const savedString = localStorage.getItem('player-state');
-            if (savedString) {
-                const saved = JSON.parse(savedString);
-                console.log('Hydration found saved state:', {
-                    playlistLen: saved.playlist?.length,
-                    currentIndex: saved.currentIndex
-                });
+            // Attempt to load split state
+            const savedPlaylistString = localStorage.getItem('player-playlist');
+            const savedConfigString = localStorage.getItem('player-config');
+            const legacyStateString = localStorage.getItem('player-state');
+
+            let hydratedState = {};
+
+            if (savedPlaylistString || savedConfigString) {
+                if (savedPlaylistString) hydratedState.playlist = JSON.parse(savedPlaylistString);
+                if (savedConfigString) {
+                    const config = JSON.parse(savedConfigString);
+                    hydratedState = { ...hydratedState, ...config };
+                }
+            } else if (legacyStateString) {
+                // Fallback to legacy
+                console.log('Migrating legacy state...');
+                hydratedState = JSON.parse(legacyStateString);
+            }
+
+            if (Object.keys(hydratedState).length > 0) {
                 // Restore state AND force play, but reset ephemeral
-                set({ ...saved, isPlaying: true, currentTime: 0, duration: 0, seekToTime: null });
+                set({ ...hydratedState, isPlaying: true, currentTime: 0, duration: 0, seekToTime: null });
             } else {
                 console.log('Hydration: No saved state found.');
             }
+
         } catch (err) {
             console.error('Hydration failed:', err);
         }
@@ -237,22 +252,27 @@ export const usePlayerStore = create((set, get) => ({
         // Start persisting *after* hydration attempt
         console.log('Persistence subscription started.');
 
-        const PERSIST_KEYS = ['playlist', 'history', 'currentIndex', 'volume', 'isMuted', 'isShuffle', 'isRepeat', 'likeTags', 'viewedItems', 'skipViewed'];
-
         usePlayerStore.subscribe((state, prevState) => {
-            // Optimization: Only persist if one of the monitored keys changed
-            // This prevents writing on every 'currentTime' update (60fps)
-            const shouldPersist = PERSIST_KEYS.some(key => state[key] !== prevState[key]);
-
-            if (shouldPersist) {
-                const { playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags, viewedItems, skipViewed } = state;
+            // 1. Handle Playlist Persistence (Huge object)
+            // Only write if reference changes
+            if (state.playlist !== prevState.playlist) {
                 try {
-                    localStorage.setItem('player-state', JSON.stringify({
-                        playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags,
-                        viewedItems, skipViewed
-                    }));
+                    localStorage.setItem('player-playlist', JSON.stringify(state.playlist));
                 } catch (e) {
-                    console.error('Persistence failed:', e);
+                    console.error('Playlist persistence failed:', e);
+                }
+            }
+
+            // 2. Handle Config Persistence (Small objects)
+            const CONFIG_KEYS = ['history', 'currentIndex', 'volume', 'isMuted', 'isShuffle', 'isRepeat', 'likeTags', 'viewedItems', 'skipViewed', 'libraryPath'];
+            const shouldPersistConfig = CONFIG_KEYS.some(key => state[key] !== prevState[key]);
+
+            if (shouldPersistConfig) {
+                const config = CONFIG_KEYS.reduce((acc, key) => ({ ...acc, [key]: state[key] }), {});
+                try {
+                    localStorage.setItem('player-config', JSON.stringify(config));
+                } catch (e) {
+                    console.error('Config persistence failed:', e);
                 }
             }
         });
