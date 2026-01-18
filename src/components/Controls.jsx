@@ -12,45 +12,13 @@ const formatTime = (seconds) => {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
-const Controls = () => {
-    const {
-        isPlaying, togglePlay, next, previous,
-        volume, setVolume, playlist, currentIndex,
-        currentTime, duration, requestSeek,
-        updateItemTags, likeTags, setLikeTags,
-        skipViewed, toggleSkipViewed, clearViewedHistory, viewedItems
-    } = usePlayerStore();
+// Isolated component for the main interactive progress bar
+// This component subscribes to currentTime/duration so only it re-renders 60fps
+const ProgressBar = () => {
+    const currentTime = usePlayerStore(state => state.currentTime);
+    const duration = usePlayerStore(state => state.duration);
+    const requestSeek = usePlayerStore(state => state.requestSeek);
 
-    const [isPinned, setIsPinned] = useState(false);
-    const [isUpdatingTag, setIsUpdatingTag] = useState(false);
-    const [showTagSelector, setShowTagSelector] = useState(false);
-    const [selectorPos, setSelectorPos] = useState(null);
-    const [popupReason, setPopupReason] = useState(null);
-    const [confirmClearHistory, setConfirmClearHistory] = useState(false); // Confirmation state
-
-    useEffect(() => {
-        if (confirmClearHistory) {
-            const timer = setTimeout(() => setConfirmClearHistory(false), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [confirmClearHistory]);
-
-    const handleClearHistory = () => {
-        if (confirmClearHistory) {
-            clearViewedHistory();
-            setConfirmClearHistory(false);
-        } else {
-            setConfirmClearHistory(true);
-        }
-    };
-
-    const heartRef = useRef(null);
-    const { addToast } = useToastStore();
-
-
-    const currentItem = playlist[currentIndex];
-
-    // Scrubbing Logic
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubTime, setScrubTime] = useState(0);
 
@@ -74,6 +42,102 @@ const Controls = () => {
         requestSeek(finalTime);
     };
 
+    return (
+        <div className="progress-bar-container">
+            <span className="time-display">{formatTime(scrubTime)}</span>
+            <input
+                type="range"
+                className="progress-slider"
+                min="0"
+                max={duration || 100}
+                step="0.1"
+                value={scrubTime}
+                onMouseDown={handleScrubStart}
+                onChange={handleScrubChange}
+                onMouseUp={handleScrubEnd}
+            />
+            <span className="time-display">{formatTime(duration)}</span>
+        </div>
+    );
+};
+
+// Isolated component for the mini progress bar (bottom line)
+const MiniProgressBar = () => {
+    const currentTime = usePlayerStore(state => state.currentTime);
+    const duration = usePlayerStore(state => state.duration);
+
+    return (
+        <div className="mini-progress-bar" style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: '4px',
+            background: 'rgba(255,255,255,0.1)',
+            pointerEvents: 'none',
+            zIndex: 2000,
+            transition: 'opacity 0.3s'
+        }}>
+            <div style={{
+                width: `${(currentTime / (duration || 1)) * 100}%`,
+                height: '100%',
+                background: 'var(--accent, #4a9eff)',
+                transition: 'width 0.2s linear'
+            }} />
+        </div>
+    );
+};
+
+const Controls = () => {
+    // Selective subscriptions for stability
+    const playlist = usePlayerStore(state => state.playlist);
+    const currentIndex = usePlayerStore(state => state.currentIndex);
+    const isPlaying = usePlayerStore(state => state.isPlaying);
+    const volume = usePlayerStore(state => state.volume);
+    const likeTags = usePlayerStore(state => state.likeTags);
+    const viewedItems = usePlayerStore(state => state.viewedItems);
+    const skipViewed = usePlayerStore(state => state.skipViewed);
+
+    // Actions
+    const togglePlay = usePlayerStore(state => state.togglePlay);
+    const next = usePlayerStore(state => state.next);
+    const previous = usePlayerStore(state => state.previous);
+    const setVolume = usePlayerStore(state => state.setVolume);
+    const updateItemTags = usePlayerStore(state => state.updateItemTags);
+    const setLikeTags = usePlayerStore(state => state.setLikeTags);
+    const toggleSkipViewed = usePlayerStore(state => state.toggleSkipViewed);
+    const clearViewedHistory = usePlayerStore(state => state.clearViewedHistory);
+
+    const [isPinned, setIsPinned] = useState(false);
+    const [isUpdatingTag, setIsUpdatingTag] = useState(false);
+    const [showTagSelector, setShowTagSelector] = useState(false);
+    const [selectorPos, setSelectorPos] = useState(null);
+    const [popupReason, setPopupReason] = useState(null);
+    const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+
+    useEffect(() => {
+        if (confirmClearHistory) {
+            const timer = setTimeout(() => setConfirmClearHistory(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [confirmClearHistory]);
+
+    const handleClearHistory = () => {
+        if (confirmClearHistory) {
+            clearViewedHistory();
+            setConfirmClearHistory(false);
+        } else {
+            setConfirmClearHistory(true);
+        }
+    };
+
+    const heartRef = useRef(null);
+    const { addToast } = useToastStore();
+
+    const currentItem = playlist[currentIndex];
+
+    // Note: Scrubbing logic moved to ProgressBar component
+
     const togglePin = async () => {
         if (window.electron && window.electron.toggleAlwaysOnTop) {
             const newState = await window.electron.toggleAlwaysOnTop();
@@ -90,8 +154,8 @@ const Controls = () => {
     const updateSelectorPosition = () => {
         if (heartRef.current) {
             const rect = heartRef.current.getBoundingClientRect();
-            const width = 600; // TagSelector width
-            const height = 400; // TagSelector height
+            const width = 600;
+            const height = 400;
             const gap = 15;
 
             let left = rect.left + (rect.width / 2) - (width / 2);
@@ -101,8 +165,7 @@ const Controls = () => {
             if (left < 10) left = 10;
             if (left + width > window.innerWidth - 10) left = window.innerWidth - width - 10;
 
-            // Clamp vertical (if button is too high, show below?)
-            // Assuming controls are always at bottom for now.
+            // Clamp vertical
             if (top < 10) top = 10;
 
             setSelectorPos({ top, left });
@@ -117,7 +180,6 @@ const Controls = () => {
     const handleHeartClick = async () => {
         if (!currentItem || isUpdatingTag) return;
 
-        // If no tags setup, open setup
         if (likeTags.length === 0) {
             setPopupReason('click');
             updateSelectorPosition();
@@ -125,20 +187,16 @@ const Controls = () => {
             return;
         }
 
-        // Toggle Tags
         setIsUpdatingTag(true);
         try {
             let updatedItem;
             if (isLiked) {
-                // UNLIKE: Remove tags (UPDATED LOGIC FROM PREVIOUS STEP IS PRESERVED HERE IF I DON'T OVERWRITE IT, 
-                // BUT I AM REPLACING THE WHOLE BLOCK handlesHeartClick so I MUST include the previous logic)
                 updatedItem = await eagleService.removeTags(currentItem, likeTags);
                 if (updatedItem && updatedItem.tags) {
                     updateItemTags(currentItem.id, updatedItem.tags);
                     addToast("Removed from Favorites", "info");
                 }
             } else {
-                // LIKE: Add tags
                 updatedItem = await eagleService.addTags(currentItem, likeTags);
                 if (updatedItem && updatedItem.tags) {
                     updateItemTags(currentItem.id, updatedItem.tags);
@@ -153,6 +211,26 @@ const Controls = () => {
         }
     };
 
+    const handleHeartClickRef = useRef(handleHeartClick);
+    useEffect(() => {
+        handleHeartClickRef.current = handleHeartClick;
+    });
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key.toLowerCase() === 'l' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+                e.preventDefault();
+                if (handleHeartClickRef.current) {
+                    handleHeartClickRef.current();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     const handleHeartContextMenu = (e) => {
         e.preventDefault();
         setPopupReason('context');
@@ -164,7 +242,6 @@ const Controls = () => {
         setLikeTags(tags);
         setShowTagSelector(false);
 
-        // If triggered by a left-click (attempt to like), perform the like action now with new tags
         if (popupReason === 'click' && currentItem && tags.length > 0) {
             setIsUpdatingTag(true);
             try {
@@ -182,31 +259,11 @@ const Controls = () => {
         }
     };
 
-    // Determine if video
-    const isVideo = currentItem?.ext && ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(currentItem.ext.toLowerCase());
-
-
     return (
         <>
             <div className="controls-panel">
                 {/* Progress Bar for Video and Images */}
-                {currentItem && (
-                    <div className="progress-bar-container">
-                        <span className="time-display">{formatTime(scrubTime)}</span>
-                        <input
-                            type="range"
-                            className="progress-slider"
-                            min="0"
-                            max={duration || 100}
-                            step="0.1"
-                            value={scrubTime}
-                            onMouseDown={handleScrubStart}
-                            onChange={handleScrubChange}
-                            onMouseUp={handleScrubEnd}
-                        />
-                        <span className="time-display">{formatTime(duration)}</span>
-                    </div>
-                )}
+                {currentItem && <ProgressBar />}
 
                 {/* Title in Controls */}
                 <div style={{ textAlign: 'center', marginBottom: 10, color: 'white', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
@@ -269,9 +326,6 @@ const Controls = () => {
                         </div>
 
                         <div className="spacer" style={{ width: 20 }} />
-
-
-
 
                         <button
                             onClick={togglePin}
@@ -372,9 +426,6 @@ const Controls = () => {
                     .spacer { flex: 1; }
                     .volume-control { display: flex; align-items: center; gap: 10px; }
                     .volume-slider { width: 80px; accent-color: var(--accent, #4a9eff); }
-                    
-
-
                 `}</style>
             </div>
 
@@ -383,7 +434,7 @@ const Controls = () => {
                 <div style={{
                     position: 'fixed',
                     top: 0, left: 0, width: '100%', height: '100%',
-                    background: 'transparent', // Transparent backdrop
+                    background: 'transparent',
                     zIndex: 3000,
                     pointerEvents: 'auto'
                 }} onClick={() => setShowTagSelector(false)}>
@@ -393,7 +444,6 @@ const Controls = () => {
                             position: 'absolute',
                             top: selectorPos.top,
                             left: selectorPos.left,
-                            // Shadow to separate from background
                             filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.5))'
                         }}
                         onClick={(e) => e.stopPropagation()}
@@ -408,24 +458,7 @@ const Controls = () => {
             )}
 
             {/* Persistent Mini Progress Bar */}
-            <div className="mini-progress-bar" style={{
-                position: 'fixed',
-                bottom: 0,
-                left: 0,
-                width: '100%',
-                height: '4px',
-                background: 'rgba(255,255,255,0.1)',
-                pointerEvents: 'none',
-                zIndex: 2000,
-                transition: 'opacity 0.3s'
-            }}>
-                <div style={{
-                    width: `${(currentTime / (duration || 1)) * 100}%`,
-                    height: '100%',
-                    background: 'var(--accent, #4a9eff)',
-                    transition: 'width 0.2s linear'
-                }} />
-            </div>
+            <MiniProgressBar />
         </>
     );
 };

@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 
 const InfoPanel = () => {
-    const { playlist, currentIndex, folderIdNameMap } = usePlayerStore();
+    const playlist = usePlayerStore(state => state.playlist);
+    const currentIndex = usePlayerStore(state => state.currentIndex);
+    const folderIdNameMap = usePlayerStore(state => state.folderIdNameMap);
     const currentItem = playlist[currentIndex];
     const [isHovered, setIsHovered] = useState(false);
 

@@ -19,7 +19,7 @@ const Player = () => {
     const markAsViewed = usePlayerStore(state => state.markAsViewed); // New Action
 
     const videoRef = useRef(null);
-    const [_progress, _setProgress] = useState(0); // For image timer (local state) - Unused now
+    const [loadedItemId, setLoadedItemId] = useState(null);
     const currentItem = playlist[currentIndex];
 
     // Mark as viewed
@@ -53,12 +53,12 @@ const Player = () => {
         }
     }, [seekToTime, consumeSeek]);
 
-    // Reset image timer when item changes
+    // Reset image timer and progress when item changes
     useEffect(() => {
-        if (!isVideo) {
-            imageTimeRef.current = 0;
-            updateProgress(0, IMAGE_DURATION);
-        }
+        imageTimeRef.current = 0;
+        // For video, we set duration to 0 initially; metadata will update it.
+        // For image, we set fixed duration.
+        updateProgress(0, isVideo ? 0 : IMAGE_DURATION);
     }, [currentItem?.id, isVideo, updateProgress]);
 
     // Play/Pause Sync
@@ -75,7 +75,7 @@ const Player = () => {
             }
         } else {
             // Image Logic
-            if (isPlaying) {
+            if (isPlaying && loadedItemId === currentItem.id) {
                 const intervalStep = 100;
                 if (intervalRef.current) clearInterval(intervalRef.current);
 
@@ -97,7 +97,7 @@ const Player = () => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [isPlaying, currentItem, next, isVideo, updateProgress]);
+    }, [isPlaying, currentItem, next, isVideo, updateProgress, loadedItemId]);
 
     // Custom Drag Logic (to allow Double Click)
     const isDragging = useRef(false);
@@ -178,6 +178,7 @@ const Player = () => {
             {currentItem ? (
                 isVideo ? (
                     <video
+                        key={currentItem.id}
                         draggable={false}
                         ref={videoRef}
                         src={src}
@@ -194,10 +195,12 @@ const Player = () => {
                     />
                 ) : (
                     <img
+                        key={currentItem.id}
                         draggable={false}
                         src={src}
                         alt={currentItem.name}
                         className="media-item"
+                        onLoad={() => setLoadedItemId(currentItem.id)}
                         style={{
                             maxWidth: '100%',
                             maxHeight: '100%',

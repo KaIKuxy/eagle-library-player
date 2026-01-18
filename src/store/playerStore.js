@@ -236,16 +236,24 @@ export const usePlayerStore = create((set, get) => ({
 
         // Start persisting *after* hydration attempt
         console.log('Persistence subscription started.');
-        usePlayerStore.subscribe((state) => {
-            const { playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags, viewedItems, skipViewed } = state;
 
-            try {
-                localStorage.setItem('player-state', JSON.stringify({
-                    playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags,
-                    viewedItems, skipViewed
-                }));
-            } catch (e) {
-                console.error('Persistence failed:', e);
+        const PERSIST_KEYS = ['playlist', 'history', 'currentIndex', 'volume', 'isMuted', 'isShuffle', 'isRepeat', 'likeTags', 'viewedItems', 'skipViewed'];
+
+        usePlayerStore.subscribe((state, prevState) => {
+            // Optimization: Only persist if one of the monitored keys changed
+            // This prevents writing on every 'currentTime' update (60fps)
+            const shouldPersist = PERSIST_KEYS.some(key => state[key] !== prevState[key]);
+
+            if (shouldPersist) {
+                const { playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags, viewedItems, skipViewed } = state;
+                try {
+                    localStorage.setItem('player-state', JSON.stringify({
+                        playlist, history, currentIndex, volume, isMuted, isShuffle, isRepeat, likeTags,
+                        viewedItems, skipViewed
+                    }));
+                } catch (e) {
+                    console.error('Persistence failed:', e);
+                }
             }
         });
     }

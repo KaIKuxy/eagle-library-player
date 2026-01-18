@@ -10,7 +10,10 @@ import { useToastStore } from './store/toastStore';
 import { eagleService } from './services/eagle';
 
 const App = () => {
-    const { hydrate, setPlaylist, setLibraryPath, setFolderList } = usePlayerStore();
+    const hydrate = usePlayerStore(state => state.hydrate);
+    const setPlaylist = usePlayerStore(state => state.setPlaylist);
+    const setLibraryPath = usePlayerStore(state => state.setLibraryPath);
+    const setFolderList = usePlayerStore(state => state.setFolderList);
     const { addToast } = useToastStore();
     const wasPlayingRef = useRef(false);
 

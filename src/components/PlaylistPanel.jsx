@@ -8,7 +8,17 @@ const ITEM_HEIGHT = 68;
 const RENDER_BUFFER = 10;
 
 const PlaylistPanel = () => {
-    const { playlist, currentIndex, playItem, setPlaylist, isPlaylistPanelOpen, setPlaylistPanelOpen, clearPlaylist, shufflePlaylist, libraryPath, viewedItems } = usePlayerStore();
+    const playlist = usePlayerStore(state => state.playlist);
+    const currentIndex = usePlayerStore(state => state.currentIndex);
+    const isPlaylistPanelOpen = usePlayerStore(state => state.isPlaylistPanelOpen);
+    const viewedItems = usePlayerStore(state => state.viewedItems);
+
+    // Actions
+    const playItem = usePlayerStore(state => state.playItem);
+    const setPlaylist = usePlayerStore(state => state.setPlaylist);
+    const setPlaylistPanelOpen = usePlayerStore(state => state.setPlaylistPanelOpen);
+    const clearPlaylist = usePlayerStore(state => state.clearPlaylist);
+    const shufflePlaylist = usePlayerStore(state => state.shufflePlaylist);
     const containerRef = useRef(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [isHovered, setIsHovered] = useState(false);
